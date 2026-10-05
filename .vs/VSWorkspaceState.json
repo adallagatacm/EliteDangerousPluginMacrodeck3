@@ -1,0 +1,12 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\src",
+    "\\src\\EliteDangerousPlugin",
+    "\\src\\EliteDangerousPlugin\\Assets",
+    "\\tests",
+    "\\tests\\EliteDangerousPlugin.Tests"
+  ],
+  "SelectedNode": "\\tests\\EliteDangerousPlugin.Tests\\EliteDangerousPlugin.Tests.csproj",
+  "PreviewInSolutionExplorer": false
+}

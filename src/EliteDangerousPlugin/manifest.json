@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schemas.macro-deck.app/plugin-manifest-v1.schema.json",
+  "manifestVersion": 1,
+  "id": "com.grega81.elite-dangerous",
+  "name": "Elite Dangerous",
+  "version": "1.1.0",
+  "description": "Reads Elite Dangerous journals and status, exposing game state as Macro Deck variables.",
+  "icon": "Assets/icon.svg",
+  "entrypoints": {
+    "win-x64": {
+      "executable": "runtimes/win-x64/EliteDangerousPlugin.dll",
+      "runtime": {
+        "kind": "FrameworkDependent",
+        "dotnetVersion": "10.0"
+      }
+    },
+    "osx-arm64": {
+      "executable": "runtimes/osx-arm64/EliteDangerousPlugin.dll",
+      "runtime": {
+        "kind": "FrameworkDependent",
+        "dotnetVersion": "10.0"
+      }
+    },
+    "linux-x64": {
+      "executable": "runtimes/linux-x64/EliteDangerousPlugin.dll",
+      "runtime": {
+        "kind": "FrameworkDependent",
+        "dotnetVersion": "10.0"
+      }
+    }
+  },
+  "publisher": {
+    "name": "Grega81"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Grega81/elite-dangerous-plugin",
+  "compatibility": {
+    "macroDeck": ">=3.0.0-15"
+  }
+}
