@@ -1,0 +1,14 @@
+Voci da aggiungere ai file Localization/*.resx per la nuova azione "Resync".
+NON ho visto i .resx: adatta il formato dei nomi a quello delle voci già presenti
+per LogMessage (es. quella che genera Strings.Actions.LogMessage.Name()).
+Se i nomi sono nel formato "Actions.LogMessage.Name", usa:
+
+  Actions.ResyncVariables.Name
+    en: Elite Dangerous: Resync variables
+    it: Elite Dangerous: Risincronizza variabili
+
+  Actions.ResyncVariables.Description
+    en: Re-reads Status.json and the journals and republishes all variables.
+    it: Rilegge Status.json e i journal e ripubblica tutte le variabili.
+
+Le voci Actions.LogMessage.* non servono più (LogMessageAction.cs è stato eliminato).

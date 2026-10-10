@@ -1,7 +1,8 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\Localization"
   ],
-  "SelectedNode": "\\EliteDangerousPlugin.csproj",
+  "SelectedNode": "\\EliteJournalWatcher.cs",
   "PreviewInSolutionExplorer": false
 }

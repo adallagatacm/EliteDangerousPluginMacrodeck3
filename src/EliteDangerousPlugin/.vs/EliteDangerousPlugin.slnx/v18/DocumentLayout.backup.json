@@ -3,8 +3,12 @@
   "WorkspaceRootPath": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\EliteDangerousPlugin.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:EliteDangerousPlugin.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\manifest.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:manifest.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\PluginIntegration.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:PluginIntegration.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -23,14 +27,27 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "EliteDangerousPlugin.csproj",
-              "DocumentMoniker": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\EliteDangerousPlugin.csproj",
-              "RelativeDocumentMoniker": "EliteDangerousPlugin.csproj",
-              "ToolTip": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\EliteDangerousPlugin.csproj",
-              "RelativeToolTip": "EliteDangerousPlugin.csproj",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
-              "WhenOpened": "2026-09-25T15:54:49.137Z",
+              "Title": "manifest.json",
+              "DocumentMoniker": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\manifest.json",
+              "RelativeDocumentMoniker": "manifest.json",
+              "ToolTip": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\manifest.json",
+              "RelativeToolTip": "manifest.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAUAAAATAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-10-06T14:35:52.498Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "PluginIntegration.cs",
+              "DocumentMoniker": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\PluginIntegration.cs",
+              "RelativeDocumentMoniker": "PluginIntegration.cs",
+              "ToolTip": "C:\\Users\\adall\\source\\repos\\EliteDangerousPlugin\\src\\EliteDangerousPlugin\\PluginIntegration.cs",
+              "RelativeToolTip": "PluginIntegration.cs",
+              "ViewState": "AgIAAJkAAAAAAAAAAAAAALgAAAA3AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-10-06T14:26:44.45Z",
               "EditorCaption": ""
             }
           ]

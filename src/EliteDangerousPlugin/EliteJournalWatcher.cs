@@ -20,18 +20,19 @@ public sealed class EliteJournalWatcher : IDisposable
     private readonly ConcurrentDictionary<string, long> _journalOffsets = new();
     private string _currentJournalFile = "";
     private bool _initialized;
-    private bool _silentReplay = true;    // il primo giro non emette eventi
+    private bool _silentReplay = true;
     private bool _disposed;
 
     public EliteStatusModel Status { get; } = new();
 
-    // ─── Eventi da journal ───────────────────────────────────────
+    // ─── Eventi di stato generale ───────────────────────────────
     public event EventHandler<string>? SystemChanged;
     public event EventHandler<string>? StationChanged;
     public event EventHandler<(string Commander, string Ship)>? CommanderChanged;
-    public event EventHandler<(string Ship, string Name)>? ShipChanged;
+    public event EventHandler<(string Ship, string Name, string Ident)>? ShipChanged;
+    public event EventHandler<(double X, double Y, double Z)>? StarPosChanged;
 
-    // ─── Eventi da Status.json: flag esistenti ──────────────────
+    // ─── Eventi da Status.json ──────────────────────────────────
     public event EventHandler<bool>? DockedChanged;
     public event EventHandler<bool>? LandedChanged;
     public event EventHandler<bool>? LandingGearChanged;
@@ -42,8 +43,6 @@ public sealed class EliteJournalWatcher : IDisposable
     public event EventHandler<bool>? FsdChargingChanged;
     public event EventHandler<bool>? FsdCooldownChanged;
     public event EventHandler<bool>? LowFuelChanged;
-
-    // ─── Eventi da Status.json: nuove 12 flag ───────────────────
     public event EventHandler<bool>? InWingChanged;
     public event EventHandler<bool>? LightsOnChanged;
     public event EventHandler<bool>? CargoScoopChanged;
@@ -57,13 +56,46 @@ public sealed class EliteJournalWatcher : IDisposable
     public event EventHandler<bool>? InFighterChanged;
     public event EventHandler<bool>? InSrvChanged;
 
-    // ─── Eventi da Status.json: valori ──────────────────────────
+    // ─── Valori da Status.json ──────────────────────────────────
     public event EventHandler<string>? LegalStateChanged;
     public event EventHandler<string>? BodyNameChanged;
     public event EventHandler<(double Main, double Reservoir, double Capacity)>? FuelChanged;
-    public event EventHandler<double>? CargoChanged;
+    public event EventHandler<(double Tons, double Capacity)>? CargoChanged;
     public event EventHandler<long>? BalanceChanged;
     public event EventHandler<(int Sys, int Eng, int Wep)>? PipsChanged;
+    public event EventHandler<(double Lat, double Lon, double Alt, int Head)>? PositionChanged;
+
+    // ─── Gradi e progressi ──────────────────────────────────────
+    public event EventHandler<(int Combat, int Trade, int Explore, int Empire, int Federation, int Cqc)>? RankChanged;
+    public event EventHandler<(int Combat, int Trade, int Explore, int Empire, int Federation, int Cqc)>? ProgressChanged;
+
+    // ─── Combattimento ──────────────────────────────────────────
+    public event EventHandler<bool>? UnderAttackChanged;
+    public event EventHandler<bool>? InterdictedChanged;
+    public event EventHandler<bool>? EscapedInterdictionChanged;
+    public event EventHandler<long>? BountyChanged;
+    public event EventHandler<double>? HullDamageChanged;
+
+    // ─── Missioni ───────────────────────────────────────────────
+    public event EventHandler<int>? MissionCountChanged;
+    public event EventHandler<string>? MissionNameChanged;
+    public event EventHandler<long>? MissionRewardChanged;
+
+    // ─── Esplorazione ───────────────────────────────────────────
+    public event EventHandler<string>? ScanBodyChanged;
+    public event EventHandler<string>? ScanTypeChanged;
+    public event EventHandler<string>? MaterialChanged;
+    public event EventHandler<int>? FssBodiesChanged;
+
+    // ─── Mercato ────────────────────────────────────────────────
+    public event EventHandler<long>? MarketProfitChanged;
+
+    // ─── Flags2 Odyssey ─────────────────────────────────────────
+    public event EventHandler<bool>? OnFootChanged;
+    public event EventHandler<bool>? InTaxiChanged;
+    public event EventHandler<bool>? InMulticrewChanged;
+    public event EventHandler<bool>? LowOxygenChanged;
+    public event EventHandler<bool>? LowHealthChanged;
 
     public EliteJournalWatcher(ILogger logger)
     {
@@ -75,7 +107,6 @@ public sealed class EliteJournalWatcher : IDisposable
         if (!Directory.Exists(_journalDirectory))
         {
             _logger.Warning("Journal directory not found: {Dir} - will retry", _journalDirectory);
-            // Riprova ogni 30 secondi finché la cartella non appare
             _folderRetryTimer = new Timer(_ => TryInit(), null,
                 TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
             return;
@@ -126,13 +157,11 @@ public sealed class EliteJournalWatcher : IDisposable
         InitializeOffsets();
         PollJournals();
 
-        // Dopo il primo giro, disattiva il replay silenzioso
-        // e fai un ultimo push "vero" per allineare le variabili.
         Task.Run(async () =>
         {
             await Task.Delay(3000);
             _silentReplay = false;
-            _logger.Information("Replay silenzioso terminato, eventi attivi");
+            _logger.Information("Silent replay finished, events active");
         });
     }
 
@@ -152,7 +181,7 @@ public sealed class EliteJournalWatcher : IDisposable
                     {
                         _journalOffsets[file] = 0L;
                         _currentJournalFile = latest;
-                        _logger.Information("Journal corrente: {File}", Path.GetFileName(latest));
+                        _logger.Information("Current journal: {File}", Path.GetFileName(latest));
                     }
                     else
                     {
@@ -163,7 +192,7 @@ public sealed class EliteJournalWatcher : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Errore nell'inizializzazione degli offset");
+                _logger.Error(ex, "Error initializing offsets");
             }
         }
     }
@@ -177,7 +206,7 @@ public sealed class EliteJournalWatcher : IDisposable
         var path = Path.Combine(_journalDirectory, "Status.json");
         if (!File.Exists(path)) return;
 
-        StatusJson? status = null;
+        StatusJson? status;
         try
         {
             var json = ReadFileWithRetry(path);
@@ -186,13 +215,12 @@ public sealed class EliteJournalWatcher : IDisposable
         }
         catch (JsonException)
         {
-            // Status.json troncato durante la riscrittura: riprova al prossimo giro
-            _logger.Debug("Status.json incompleto, riprovo");
+            _logger.Debug("Status.json incomplete, will retry");
             return;
         }
         catch (Exception ex)
         {
-            _logger.Debug(ex, "Errore lettura Status.json");
+            _logger.Debug(ex, "Error reading Status.json");
             return;
         }
 
@@ -205,14 +233,16 @@ public sealed class EliteJournalWatcher : IDisposable
         bool legalChanged = false;
         bool bodyChanged = false;
         bool pipsChanged = false;
+        bool posChanged = false;
+        uint oldFlags, oldFlags2;
 
-        uint oldFlags = 0;
         lock (_statusLock)
         {
             oldFlags = Status.Flags;
+            oldFlags2 = Status.Flags2;
 
             if (Status.Flags != status.Flags) { Status.Flags = status.Flags; flagsChanged = true; }
-            if (Status.Flags2 != (status.Flags2 ?? 0)) Status.Flags2 = status.Flags2 ?? 0;
+            if (Status.Flags2 != (status.Flags2 ?? 0)) { Status.Flags2 = status.Flags2 ?? 0; flagsChanged = true; }
 
             if (Math.Abs(Status.FuelMain - (status.Fuel?.FuelMain ?? 0)) > 0.1 ||
                 Math.Abs(Status.FuelReservoir - (status.Fuel?.FuelReservoir ?? 0)) > 0.1)
@@ -222,9 +252,9 @@ public sealed class EliteJournalWatcher : IDisposable
                 fuelChanged = true;
             }
 
-            if (Math.Abs(Status.Cargo - (status.Cargo ?? 0)) > 0.1)
+            if (Math.Abs(Status.CargoTons - (status.Cargo ?? 0)) > 0.1)
             {
-                Status.Cargo = status.Cargo ?? 0;
+                Status.CargoTons = status.Cargo ?? 0;
                 cargoChanged = true;
             }
 
@@ -240,9 +270,9 @@ public sealed class EliteJournalWatcher : IDisposable
                 legalChanged = true;
             }
 
-            if (Status.BodyName != (status.BodyName ?? ""))
+            if (Status.Body != (status.BodyName ?? ""))
             {
-                Status.BodyName = status.BodyName ?? "";
+                Status.Body = status.BodyName ?? "";
                 bodyChanged = true;
             }
 
@@ -256,9 +286,21 @@ public sealed class EliteJournalWatcher : IDisposable
                     pipsChanged = true;
                 }
             }
+
+            // Posizione planetaria
+            double lat = status.Latitude ?? 0;
+            double lon = status.Longitude ?? 0;
+            double alt = status.Altitude ?? 0;
+            int head = status.Heading ?? 0;
+            if (Math.Abs(Status.Latitude - lat) > 0.0001 || Math.Abs(Status.Longitude - lon) > 0.0001 ||
+                Math.Abs(Status.Altitude - alt) > 0.1 || Status.Heading != head)
+            {
+                Status.Latitude = lat; Status.Longitude = lon;
+                Status.Altitude = alt; Status.Heading = head;
+                posChanged = true;
+            }
         }
 
-        // Durante il replay silenzioso, niente eventi: solo stato aggiornato
         if (_silentReplay) return;
 
         if (flagsChanged)
@@ -285,14 +327,22 @@ public sealed class EliteJournalWatcher : IDisposable
             NotifyFlag(oldFlags, Status.Flags, 1u << 24, InMainShipChanged, Status.InMainShip);
             NotifyFlag(oldFlags, Status.Flags, 1u << 25, InFighterChanged, Status.InFighter);
             NotifyFlag(oldFlags, Status.Flags, 1u << 26, InSrvChanged, Status.InSrv);
+
+            // Flags2
+            NotifyFlag(oldFlags2, Status.Flags2, 1u, OnFootChanged, Status.OnFoot);
+            NotifyFlag(oldFlags2, Status.Flags2, 1u << 1, InTaxiChanged, Status.InTaxi);
+            NotifyFlag(oldFlags2, Status.Flags2, 1u << 2, InMulticrewChanged, Status.InMulticrew);
+            NotifyFlag(oldFlags2, Status.Flags2, 1u << 6, LowOxygenChanged, Status.LowOxygen);
+            NotifyFlag(oldFlags2, Status.Flags2, 1u << 7, LowHealthChanged, Status.LowHealth);
         }
 
         if (fuelChanged) FuelChanged?.Invoke(this, (Status.FuelMain, Status.FuelReservoir, Status.FuelCapacity));
-        if (cargoChanged) CargoChanged?.Invoke(this, Status.Cargo);
+        if (cargoChanged) CargoChanged?.Invoke(this, (Status.CargoTons, Status.CargoCapacity));
         if (balanceChanged) BalanceChanged?.Invoke(this, Status.Balance);
         if (legalChanged) LegalStateChanged?.Invoke(this, Status.LegalState);
-        if (bodyChanged) BodyNameChanged?.Invoke(this, Status.BodyName);
+        if (bodyChanged) BodyNameChanged?.Invoke(this, Status.Body);
         if (pipsChanged) PipsChanged?.Invoke(this, (Status.PipsSys, Status.PipsEng, Status.PipsWep));
+        if (posChanged) PositionChanged?.Invoke(this, (Status.Latitude, Status.Longitude, Status.Altitude, Status.Heading));
     }
 
     private void NotifyFlag(uint oldFlags, uint newFlags, uint mask,
@@ -315,7 +365,7 @@ public sealed class EliteJournalWatcher : IDisposable
             if (string.CompareOrdinal(filePath, _currentJournalFile) > 0)
             {
                 _currentJournalFile = filePath;
-                _logger.Information("Nuovo journal corrente: {File}", Path.GetFileName(filePath));
+                _logger.Information("New current journal: {File}", Path.GetFileName(filePath));
             }
         }
         ReadJournalIncremental(filePath);
@@ -334,7 +384,7 @@ public sealed class EliteJournalWatcher : IDisposable
             var latest = files.OrderByDescending(File.GetLastWriteTimeUtc).First();
             if (latest != _currentJournalFile)
             {
-                _logger.Information("Journal corrente aggiornato: {File}", Path.GetFileName(latest));
+                _logger.Information("Current journal updated: {File}", Path.GetFileName(latest));
                 _currentJournalFile = latest;
             }
 
@@ -342,7 +392,7 @@ public sealed class EliteJournalWatcher : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Errore nel polling del journal");
+            _logger.Error(ex, "Error polling journals");
         }
     }
 
@@ -366,11 +416,7 @@ public sealed class EliteJournalWatcher : IDisposable
                 if (read <= 0) return;
 
                 int lastNl = Array.LastIndexOf(buffer, (byte)'\n', read - 1);
-                if (lastNl < 0)
-                {
-                    // Riga incompleta: riprova al prossimo giro
-                    return;
-                }
+                if (lastNl < 0) return;
 
                 _journalOffsets[filePath] = offset + lastNl + 1;
 
@@ -381,10 +427,10 @@ public sealed class EliteJournalWatcher : IDisposable
                     ProcessJournalLine(line);
                 }
             }
-            catch (IOException) { /* file bloccato, riprova */ }
+            catch (IOException) { }
             catch (Exception ex)
             {
-                _logger.Debug(ex, "Errore leggendo journal {File}", filePath);
+                _logger.Debug(ex, "Error reading journal {File}", filePath);
             }
         }
     }
@@ -404,49 +450,44 @@ public sealed class EliteJournalWatcher : IDisposable
                     if (root.TryGetProperty("StarSystem", out var sys))
                     {
                         var name = sys.GetString() ?? "";
-                        if (string.IsNullOrEmpty(name)) return;
-                        lock (_statusLock) { Status.CurrentSystem = name; }
-                        if (!_silentReplay)
-                        {
-                            _logger.Information("FSDJump -> {System}", name);
-                            SystemChanged?.Invoke(this, name);
-                        }
+                        if (string.IsNullOrEmpty(name)) break;
+                        lock (_statusLock) { Status.System = name; }
+                        if (!_silentReplay) { _logger.Information("FSDJump -> {System}", name); SystemChanged?.Invoke(this, name); }
+                    }
+                    if (root.TryGetProperty("StarPos", out var pos) && pos.ValueKind == JsonValueKind.Array && pos.GetArrayLength() >= 3)
+                    {
+                        double x = pos[0].GetDouble(), y = pos[1].GetDouble(), z = pos[2].GetDouble();
+                        lock (_statusLock) { Status.StarPosX = x; Status.StarPosY = y; Status.StarPosZ = z; }
+                        if (!_silentReplay) StarPosChanged?.Invoke(this, (x, y, z));
                     }
                     break;
 
                 case "Location":
                     {
-                        bool sysChanged = false, stChanged = false;
                         string sysName = "", stName = "";
+                        bool sysChanged = false, stChanged = false;
                         lock (_statusLock)
                         {
                             if (root.TryGetProperty("StarSystem", out var locSys))
                             {
                                 sysName = locSys.GetString() ?? "";
-                                if (!string.IsNullOrEmpty(sysName) && Status.CurrentSystem != sysName)
-                                {
-                                    Status.CurrentSystem = sysName;
-                                    sysChanged = true;
-                                }
+                                if (!string.IsNullOrEmpty(sysName) && Status.System != sysName)
+                                { Status.System = sysName; sysChanged = true; }
                             }
                             if (root.TryGetProperty("StationName", out var station))
                             {
                                 stName = station.GetString() ?? "";
-                                if (Status.CurrentStation != stName)
-                                {
-                                    Status.CurrentStation = stName;
-                                    stChanged = true;
-                                }
+                                if (Status.Station != stName) { Status.Station = stName; stChanged = true; }
                             }
                             else
                             {
-                                // Sei nello spazio: azzera la stazione
-                                if (Status.CurrentStation != "")
-                                {
-                                    Status.CurrentStation = "";
-                                    stName = "";
-                                    stChanged = true;
-                                }
+                                if (Status.Station != "") { Status.Station = ""; stName = ""; stChanged = true; }
+                            }
+                            if (root.TryGetProperty("StarPos", out var starPos) && starPos.ValueKind == JsonValueKind.Array && starPos.GetArrayLength() >= 3)
+                            {
+                                double x = starPos[0].GetDouble(), y = starPos[1].GetDouble(), z = starPos[2].GetDouble();
+                                Status.StarPosX = x; Status.StarPosY = y; Status.StarPosZ = z;
+                                if (!_silentReplay) StarPosChanged?.Invoke(this, (x, y, z));
                             }
                         }
                         if (_silentReplay) break;
@@ -459,33 +500,28 @@ public sealed class EliteJournalWatcher : IDisposable
                     if (root.TryGetProperty("StationName", out var dockedStation))
                     {
                         var st = dockedStation.GetString() ?? "";
-                        lock (_statusLock) { Status.CurrentStation = st; }
-                        if (!_silentReplay)
-                        {
-                            _logger.Information("Docked -> {Station}", st);
-                            StationChanged?.Invoke(this, st);
-                        }
+                        lock (_statusLock) { Status.Station = st; }
+                        if (!_silentReplay) { _logger.Information("Docked -> {Station}", st); StationChanged?.Invoke(this, st); }
                     }
                     break;
 
                 case "Undocked":
-                    lock (_statusLock) { Status.CurrentStation = ""; }
-                    if (!_silentReplay)
-                    {
-                        _logger.Information("Undocked");
-                        StationChanged?.Invoke(this, "");
-                    }
+                    lock (_statusLock) { Status.Station = ""; }
+                    if (!_silentReplay) { _logger.Information("Undocked"); StationChanged?.Invoke(this, ""); }
                     break;
 
                 case "LoadGame":
                     {
                         string cmdr = "", ship = "";
+                        long credits = 0;
                         lock (_statusLock)
                         {
                             if (root.TryGetProperty("Commander", out var c))
                                 Status.Commander = cmdr = c.GetString() ?? "";
                             if (root.TryGetProperty("Ship", out var s))
                                 Status.ShipType = ship = s.GetString() ?? "";
+                            if (root.TryGetProperty("Credits", out var cr))
+                                Status.Credits = credits = cr.GetInt64();
                         }
                         if (!_silentReplay && !string.IsNullOrEmpty(cmdr))
                         {
@@ -497,38 +533,189 @@ public sealed class EliteJournalWatcher : IDisposable
 
                 case "Loadout":
                     {
-                        string ship = "", name = "";
-                        double capacity = 0;
+                        string ship = "", name = "", ident = "";
+                        double cap = 0, cargoCap = 0, jumpRange = 0, hull = 1;
+                        long rebuy = 0;
+                        int modules = 0;
                         lock (_statusLock)
                         {
                             if (root.TryGetProperty("Ship", out var s))
                                 Status.ShipType = ship = s.GetString() ?? "";
                             if (root.TryGetProperty("ShipName", out var sn))
                                 Status.ShipName = name = sn.GetString() ?? "";
-                            if (root.TryGetProperty("FuelCapacity", out var fc) &&
-                                fc.TryGetProperty("Main", out var mainCap))
-                            {
-                                capacity = mainCap.GetDouble();
-                                Status.FuelCapacity = capacity;
-                            }
+                            if (root.TryGetProperty("ShipIdent", out var si))
+                                Status.ShipIdent = ident = si.GetString() ?? "";
+                            if (root.TryGetProperty("FuelCapacity", out var fc) && fc.TryGetProperty("Main", out var mainCap))
+                            { cap = mainCap.GetDouble(); Status.FuelCapacity = cap; }
+                            if (root.TryGetProperty("CargoCapacity", out var cc))
+                            { cargoCap = cc.GetDouble(); Status.CargoCapacity = cargoCap; }
+                            if (root.TryGetProperty("MaxJumpRange", out var mjr))
+                            { jumpRange = mjr.GetDouble(); Status.MaxJumpRange = jumpRange; }
+                            if (root.TryGetProperty("HullHealth", out var hh))
+                            { hull = hh.GetDouble(); Status.HullHealth = hull; }
+                            if (root.TryGetProperty("Rebuy", out var rb))
+                            { rebuy = rb.GetInt64(); Status.RebuyCost = rebuy; }
+                            if (root.TryGetProperty("Modules", out var mods) && mods.ValueKind == JsonValueKind.Array)
+                            { modules = mods.GetArrayLength(); Status.ModuleCount = modules; }
                         }
                         if (!_silentReplay && !string.IsNullOrEmpty(ship))
                         {
-                            _logger.Information("Loadout -> {Ship} '{Name}', capacity {Cap}", ship, name, capacity);
-                            ShipChanged?.Invoke(this, (ship, name));
+                            _logger.Information("Loadout -> {Ship} '{Name}' ({Ident})", ship, name, ident);
+                            ShipChanged?.Invoke(this, (ship, name, ident));
                         }
                         break;
                     }
+
+                case "Rank":
+                    {
+                        int c = 0, t = 0, e = 0, emp = 0, fed = 0, cqc = 0;
+                        lock (_statusLock)
+                        {
+                            if (root.TryGetProperty("Combat", out var v)) Status.RankCombat = c = v.GetInt32();
+                            if (root.TryGetProperty("Trade", out v)) Status.RankTrade = t = v.GetInt32();
+                            if (root.TryGetProperty("Explore", out v)) Status.RankExplore = e = v.GetInt32();
+                            if (root.TryGetProperty("Empire", out v)) Status.RankEmpire = emp = v.GetInt32();
+                            if (root.TryGetProperty("Federation", out v)) Status.RankFederation = fed = v.GetInt32();
+                            if (root.TryGetProperty("CQC", out v)) Status.RankCqc = cqc = v.GetInt32();
+                        }
+                        if (!_silentReplay) RankChanged?.Invoke(this, (c, t, e, emp, fed, cqc));
+                        break;
+                    }
+
+                case "Progress":
+                    {
+                        int c = 0, t = 0, e = 0, emp = 0, fed = 0, cqc = 0;
+                        lock (_statusLock)
+                        {
+                            if (root.TryGetProperty("Combat", out var v)) Status.ProgressCombat = c = v.GetInt32();
+                            if (root.TryGetProperty("Trade", out v)) Status.ProgressTrade = t = v.GetInt32();
+                            if (root.TryGetProperty("Explore", out v)) Status.ProgressExplore = e = v.GetInt32();
+                            if (root.TryGetProperty("Empire", out v)) Status.ProgressEmpire = emp = v.GetInt32();
+                            if (root.TryGetProperty("Federation", out v)) Status.ProgressFederation = fed = v.GetInt32();
+                            if (root.TryGetProperty("CQC", out v)) Status.ProgressCqc = cqc = v.GetInt32();
+                        }
+                        if (!_silentReplay) ProgressChanged?.Invoke(this, (c, t, e, emp, fed, cqc));
+                        break;
+                    }
+
+                case "UnderAttack":
+                    lock (_statusLock) { Status.UnderAttack = true; }
+                    if (!_silentReplay) { _logger.Information("UnderAttack"); UnderAttackChanged?.Invoke(this, true); }
+                    break;
+
+                case "Interdicted":
+                    lock (_statusLock) { Status.Interdicted = true; }
+                    if (!_silentReplay) { _logger.Information("Interdicted"); InterdictedChanged?.Invoke(this, true); }
+                    break;
+
+                case "EscapeInterdiction":
+                    lock (_statusLock) { Status.Interdicted = false; Status.EscapedInterdiction = true; }
+                    if (!_silentReplay) { _logger.Information("EscapeInterdiction"); EscapedInterdictionChanged?.Invoke(this, true); }
+                    break;
+
+                case "Bounty":
+                    if (root.TryGetProperty("Reward", out var rew))
+                    {
+                        long r = rew.GetInt64();
+                        lock (_statusLock) { Status.LastBounty = r; }
+                        if (!_silentReplay) { _logger.Information("Bounty -> {Reward}", r); BountyChanged?.Invoke(this, r); }
+                    }
+                    break;
+
+                case "HullDamage":
+                    if (root.TryGetProperty("Health", out var hlt))
+                    {
+                        double h = hlt.GetDouble();
+                        lock (_statusLock) { Status.HullDamage = h; }
+                        if (!_silentReplay) HullDamageChanged?.Invoke(this, h);
+                    }
+                    break;
+
+                case "MissionAccepted":
+                    {
+                        string name = "";
+                        lock (_statusLock)
+                        {
+                            if (root.TryGetProperty("Name", out var n)) Status.LastMissionName = name = n.GetString() ?? "";
+                            Status.MissionCount++;
+                        }
+                        if (!_silentReplay)
+                        {
+                            if (!string.IsNullOrEmpty(name)) MissionNameChanged?.Invoke(this, name);
+                            MissionCountChanged?.Invoke(this, Status.MissionCount);
+                        }
+                        break;
+                    }
+
+                case "MissionCompleted":
+                    {
+                        long reward = 0;
+                        lock (_statusLock)
+                        {
+                            if (root.TryGetProperty("Reward", out var r)) Status.LastMissionReward = reward = r.GetInt64();
+                            if (Status.MissionCount > 0) Status.MissionCount--;
+                        }
+                        if (!_silentReplay)
+                        {
+                            if (reward > 0) MissionRewardChanged?.Invoke(this, reward);
+                            MissionCountChanged?.Invoke(this, Status.MissionCount);
+                        }
+                        break;
+                    }
+
+                case "Scan":
+                    {
+                        string body = "", type = "";
+                        lock (_statusLock)
+                        {
+                            if (root.TryGetProperty("BodyName", out var b)) Status.LastScanBody = body = b.GetString() ?? "";
+                            if (root.TryGetProperty("StarType", out var st)) Status.LastScanType = type = st.GetString() ?? "";
+                            else if (root.TryGetProperty("PlanetClass", out var pc)) Status.LastScanType = type = pc.GetString() ?? "";
+                        }
+                        if (!_silentReplay && !string.IsNullOrEmpty(body))
+                        {
+                            _logger.Information("Scan -> {Body} ({Type})", body, type);
+                            ScanBodyChanged?.Invoke(this, body);
+                            ScanTypeChanged?.Invoke(this, type);
+                        }
+                        break;
+                    }
+
+                case "MaterialCollected":
+                    if (root.TryGetProperty("Name", out var mat))
+                    {
+                        string m = mat.GetString() ?? "";
+                        lock (_statusLock) { Status.LastMaterial = m; }
+                        if (!_silentReplay && !string.IsNullOrEmpty(m)) MaterialChanged?.Invoke(this, m);
+                    }
+                    break;
+
+                case "FSSDiscoveryScan":
+                    if (root.TryGetProperty("BodyCount", out var bc))
+                    {
+                        int n = bc.GetInt32();
+                        lock (_statusLock) { Status.FssBodies = n; }
+                        if (!_silentReplay) FssBodiesChanged?.Invoke(this, n);
+                    }
+                    break;
+
+                case "MarketSell":
+                    if (root.TryGetProperty("TotalSale", out var ts))
+                    {
+                        long p = ts.GetInt64();
+                        lock (_statusLock) { Status.LastMarketProfit = p; }
+                        if (!_silentReplay) MarketProfitChanged?.Invoke(this, p);
+                    }
+                    break;
             }
         }
         catch (JsonException)
         {
-            // Riga malformata: logga in Debug, non nascondere altri errori
-            _logger.Debug("Riga journal non valida: {Line}", line);
+            _logger.Debug("Invalid journal line: {Line}", line);
         }
         catch (Exception ex)
         {
-            _logger.Debug(ex, "Errore in ProcessJournalLine");
+            _logger.Debug(ex, "Error in ProcessJournalLine");
         }
     }
 
@@ -571,6 +758,10 @@ public sealed class EliteJournalWatcher : IDisposable
         public long? Balance { get; set; }
         public double? Cargo { get; set; }
         public int[]? Pips { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public double? Altitude { get; set; }
+        public int? Heading { get; set; }
     }
 
     private sealed class FuelJson
