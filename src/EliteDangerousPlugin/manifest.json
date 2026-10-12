@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "com.grega81.elite-dangerous",
   "name": "Elite Dangerous",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Reads Elite Dangerous journals and status, exposing game state as Macro Deck variables.",
   "icon": "Assets/icon.svg",
   "entrypoints": {
@@ -28,6 +28,6 @@
   "license": "MIT",
   "repository": "https://github.com/Grega81/elite-dangerous-plugin",
   "compatibility": {
-    "macroDeck": ">=3.0.0-15"
+    "macroDeck": ">=3.0.0-16"
   }
 }
